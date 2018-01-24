@@ -25,47 +25,46 @@ def escapeString(string):
 class PQ ( Thread ):
 	def __init__ ( self, tid, docs ):
 		Thread.__init__ ( self )
-		self.iter = 0;
+		self.q_count = 0;
 		self.docs = docs
 		self.tm = 0
 		self.doc_count = 0
+		#print "thd %d, count %d" % (tid, len(docs))
 		
 	def run ( self ):
 		self.conn = MySQLdb.connect ( host=h, user="root", passwd="", db="", port=qport )
 		self.cursor = self.conn.cursor ()
 	
-		for doc in docs:
-			text_zipped = ''
-			with gzip.open(doc, 'rb') as f:
-				text_zipped = f.read()
-			text = escapeString(text_zipped)
-			
+		for doc in self.docs:
+			src,text = doc
 			#print ( "CALL PQ ('%s', '%s', 0 as docs_json)" % (idx, text) )
+			
 			start = mytime()
 			self.cursor.execute ( "CALL PQ ('%s', '%s', 0 as docs_json)" % (idx, text) )
 			rows = self.cursor.fetchall()
 			end = mytime() - start
+			
 			self.tm = self.tm + end
-			self.iter = self.iter + 1
+			self.q_count = self.q_count + 1
 			doc_count = len(rows)
 			self.doc_count = self.doc_count + doc_count
 			if dump_reply:
 				doc_list = ''
 				if doc_count>0:
 					doc_list = ", ".join('%d'%(r[0]-1) for r in rows)
-				print "%s %d %s" % ( os.path.basename(doc), doc_count, doc_list )
-				#"{$name} {$rowsCount} " . implode(", ",$ids) . "\t\t\t\n";
+				print "%s %d %s" % ( os.path.basename(src), doc_count, doc_list )
 		
 			
 ##########################################################################
 
 docs_path = ""
+docs_split = True
 
 i = 1
 while (i<len(sys.argv)):
 	arg = sys.argv[i]
 	i += 1
-	if arg=='-n' or arg=='--thd':
+	if arg=='--thd':
 		NUM_THREADS = int(sys.argv[i])
 		i += 1
 	elif arg=='--host':
@@ -73,20 +72,34 @@ while (i<len(sys.argv)):
 		i += 1
 	elif arg=='--total':
 		dump_reply = False
+	elif arg=='--docs-all':
+		docs_split = False
+	elif arg.startswith('-'):
+		die ( 'unknown option "%s"' % arg )
 	else:
 		docs_path = arg
 
-docs = []		
+docs = []
+docs_src = []		
 for f in os.listdir(docs_path):
 	fpath = os.path.join ( docs_path, f ) 
-#	print f
-#	print fpath
 	if os.path.isfile ( fpath ) and os.path.splitext ( f )[1]=='.gz':
-		docs.append ( fpath )
-docs.sort()
-#print docs
-	
-thds = [ PQ ( tid, docs [ tid*len(docs)/NUM_THREADS : (tid+1)*len(docs)/NUM_THREADS ] ) for tid in range(NUM_THREADS) ]
+		docs_src.append ( fpath )
+docs_src.sort()
+for doc in docs_src:
+	text_zipped = ''
+	with gzip.open(doc, 'rb') as f:
+		text_zipped = f.read()
+	text = escapeString(text_zipped)
+	docs.append ( (doc, text) )
+
+if docs_split:
+	q_total = len(docs)	
+	thds = [ PQ ( tid, docs [ tid*len(docs)/NUM_THREADS : (tid+1)*len(docs)/NUM_THREADS ] ) for tid in range(NUM_THREADS) ]
+else:
+	q_total = len(docs) * NUM_THREADS	
+	thds = [ PQ ( tid, docs ) for tid in range(NUM_THREADS) ]
+
 
 start = mytime()
 [ t.start() for t in thds ]
@@ -95,13 +108,15 @@ thd_tm = 0
 		
 while alive>0:
 	alive = 0
+	q = 0
 	for t in thds:
 		thd_tm = max(thd_tm, t.tm)
+		q = q + t.q_count
 		if t.isAlive():
 			alive = alive + 1
 	elapsed = mytime() - start
 	if not dump_reply:
-		sys.stdout.write ( "elapsed %d thd=%d %.3f \r" % ( elapsed, alive, thd_tm ) )
+		sys.stdout.write ( "thd=%d, elapsed=%d(%.3f), q=%d(%d) \r" % ( alive, elapsed, thd_tm, q, q_total ) )
 		sys.stdout.flush()
 	time.sleep (0.5)
 
@@ -111,4 +126,4 @@ doc_count = 0
 for t in thds:
 	doc_count = t.doc_count + doc_count
 
-print 'matched %d docs (%d) in %.3f sec (%.3f docs/sec), total %.3f sec' % ( len(docs), doc_count, thd_tm, len(docs)/thd_tm, tm )
+print '\ndocs send %d, q matched %d, in %.3f sec, (%.3f docs/sec), total %.3f sec, threads %d' % ( q_total, doc_count, thd_tm, len(docs)/thd_tm, tm, NUM_THREADS )
