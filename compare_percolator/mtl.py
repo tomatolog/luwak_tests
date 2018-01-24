@@ -27,25 +27,26 @@ class PQ ( Thread ):
 		Thread.__init__ ( self )
 		self.q_count = 0;
 		self.docs = docs
+		self.docs_total = len(self.docs)
+		self.it = 0
 		self.tm = 0
 		self.doc_count = 0
-		#print "thd %d, count %d" % (tid, len(docs))
 		
 	def run ( self ):
 		self.conn = MySQLdb.connect ( host=h, user="root", passwd="", db="", port=qport )
 		self.cursor = self.conn.cursor ()
 	
-		for doc in self.docs:
-			src,text = doc
-			#print ( "CALL PQ ('%s', '%s', 0 as docs_json)" % (idx, text) )
+		while self.it<self.docs_total:
+			src,text,count = self.getDoc()
+			q = "CALL PQ ('%s', %s, 0 as docs_json)" % (idx, text)
 			
 			start = mytime()
-			self.cursor.execute ( "CALL PQ ('%s', '%s', 0 as docs_json)" % (idx, text) )
+			self.cursor.execute ( q )
 			rows = self.cursor.fetchall()
 			end = mytime() - start
 			
 			self.tm = self.tm + end
-			self.q_count = self.q_count + 1
+			self.q_count = self.q_count + count
 			doc_count = len(rows)
 			self.doc_count = self.doc_count + doc_count
 			if dump_reply:
@@ -53,12 +54,36 @@ class PQ ( Thread ):
 				if doc_count>0:
 					doc_list = ", ".join('%d'%(r[0]-1) for r in rows)
 				print "%s %d %s" % ( os.path.basename(src), doc_count, doc_list )
+	
+	def getDoc ( self ):
+		text = ''
+		src = []
+		count = 0
+		if batch<2:
+			src.append ( self.docs[self.it][0] )
+			text = "'" + self.docs[self.it][1] + "'"
+			self.it = self.it + 1
+			count = 1
+		else:
+			text = '('
+			it = 0
+			while self.it + it<self.docs_total and it<batch:
+				src.append ( self.docs[self.it + it][0] )
+				if it>0:
+					text = text + ','
+				text = text + "'" + self.docs[self.it + it][1] + "'"
+				it = it + 1
+			text = text + ')'
+			self.it = self.it + it
+			count = it
 		
+		return (src, text, count)
 			
 ##########################################################################
 
 docs_path = ""
 docs_split = True
+batch = 1
 
 i = 1
 while (i<len(sys.argv)):
@@ -74,6 +99,9 @@ while (i<len(sys.argv)):
 		dump_reply = False
 	elif arg=='--docs-all':
 		docs_split = False
+	elif arg=='--batch':
+		batch = int(sys.argv[i])
+		i += 1
 	elif arg.startswith('-'):
 		die ( 'unknown option "%s"' % arg )
 	else:
