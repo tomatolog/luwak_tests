@@ -67,31 +67,25 @@
       <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-    	<groupId>uk.co.flax</groupId>
-    	<artifactId>luwak</artifactId>
-    	<version>1.1.0-rc4-SNAPSHOT</version>
-    </dependency>
-    <dependency>
-    	<groupId>uk.co.flax</groupId>
-    	<artifactId>luwak-parent</artifactId>
-    	<version>1.1.0-rc4-SNAPSHOT</version>
-    	<type>pom</type>
-    </dependency>
+<dependency>
+  <groupId>com.github.flaxsearch</groupId>
+  <artifactId>luwak</artifactId>
+  <version>1.2.0</version>
+</dependency>
     <dependency>
     	<groupId>org.apache.lucene</groupId>
     	<artifactId>lucene-core</artifactId>
-    	<version>5.1.0</version>
+    	<version>5.3.0</version>
     </dependency>
     <dependency>
     	<groupId>org.apache.lucene</groupId>
     	<artifactId>lucene-analyzers-common</artifactId>
-    	<version>5.1.0</version>
+    	<version>5.3.0</version>
     </dependency>
     <dependency>
     	<groupId>org.apache.lucene</groupId>
     	<artifactId>lucene-queries</artifactId>
-    	<version>5.1.0</version>
+    	<version>5.3.0</version>
     </dependency>
     <dependency>
     	<groupId>commons-io</groupId>
