@@ -31,6 +31,9 @@ class PQ ( Thread ):
 		self.it = 0
 		self.tm = 0
 		self.doc_count = 0
+		self.docs_option = ''
+		if batch>1:
+			self.docs_option = ', 1 as docs'
 		
 	def run ( self ):
 		self.conn = MySQLdb.connect ( host=h, user="root", passwd="", db="", port=qport )
@@ -38,7 +41,7 @@ class PQ ( Thread ):
 	
 		while self.it<self.docs_total:
 			src,text,count = self.getDoc()
-			q = "CALL PQ ('%s', %s, 0 as docs_json)" % (idx, text)
+			q = "CALL PQ ('%s', %s, 0 as docs_json %s)" % (idx, text, self.docs_option)
 			
 			start = mytime()
 			self.cursor.execute ( q )
@@ -50,10 +53,7 @@ class PQ ( Thread ):
 			doc_count = len(rows)
 			self.doc_count = self.doc_count + doc_count
 			if dump_reply:
-				doc_list = ''
-				if doc_count>0:
-					doc_list = ", ".join('%d'%(r[0]-1) for r in rows)
-				print "%s %d %s" % ( os.path.basename(src), doc_count, doc_list )
+				self.print_reply ( rows, src, doc_count )
 	
 	def getDoc ( self ):
 		text = ''
@@ -78,6 +78,30 @@ class PQ ( Thread ):
 			count = it
 		
 		return (src, text, count)
+		
+	def print_reply ( self, rows, src, doc_count ):
+		if batch<2:
+			doc_list = ''
+			if doc_count>0:
+				doc_list = ", ".join('%d'%(r[0]-1) for r in rows)
+			print "%s %d %s" % ( os.path.basename(src[0]), doc_count, doc_list )
+		else:
+			docs_src = [(s, []) for s in src] 
+			for q, d in rows:
+				qnum = int(q)-1
+				qdocs = d.split(',')
+				for qd in qdocs:
+					docnum = int(qd)
+					docs_src[docnum-1][1].append ( qnum )
+			docs_dst = []
+			for d in docs_src:
+				d1 = sorted ( d[1] )
+				d2 = ''
+				if d1>0:
+					d2 = ", ".join('%d'%(doc) for doc in d[1])
+				docs_dst.append((d[0], d1, d2))
+			for d in docs_dst:
+				print "%s %d %s" % ( os.path.basename(d[0]), len(d[1]), d[2] )
 			
 ##########################################################################
 
